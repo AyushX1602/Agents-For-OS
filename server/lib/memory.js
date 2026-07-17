@@ -163,13 +163,13 @@ async function searchMemories(userId, query, limit = 5) {
 
   if (client) {
     try {
-      const results = await withTimeout(
-        client.search(query, { user_id: userId, limit }),
+      const resp = await withTimeout(
+        client.search(query, { filters: { user_id: userId }, limit }),
         MEM0_TIMEOUT_MS
       )
-      console.log(`[Memory] mem0 ← searched memories for ${userId} (${results.length ?? '?'} results)`)
-      // Mem0 returns an array of { id, memory, score, ... }
-      return Array.isArray(results) ? results.slice(0, limit) : []
+      const list = Array.isArray(resp) ? resp : (Array.isArray(resp?.results) ? resp.results : [])
+      console.log(`[Memory] mem0 ← searched memories for ${userId} (${list.length} results)`)
+      return list.slice(0, limit)
     } catch (err) {
       console.warn(`[Memory] mem0 search failed, falling back to local: ${err.message}`)
     }
@@ -192,12 +192,13 @@ async function getAllMemories(userId) {
 
   if (client) {
     try {
-      const results = await withTimeout(
-        client.getAll({ user_id: userId }),
+      const resp = await withTimeout(
+        client.getAll({ filters: { user_id: userId } }),
         MEM0_TIMEOUT_MS
       )
-      console.log(`[Memory] mem0 ← getAllMemories for ${userId}`)
-      return Array.isArray(results) ? results : []
+      const list = Array.isArray(resp) ? resp : (Array.isArray(resp?.results) ? resp.results : [])
+      console.log(`[Memory] mem0 ← getAllMemories for ${userId} (${list.length} results)`)
+      return list
     } catch (err) {
       console.warn(`[Memory] mem0 getAll failed, falling back to local: ${err.message}`)
     }
