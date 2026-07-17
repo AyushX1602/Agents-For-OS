@@ -8011,10 +8011,10 @@ for (/**@suppress{duplicate}*/ var i = 0; i <= 288; ++i) {
 {
   // Begin ATMODULES hooks
   if (Module["preloadPlugins"]) preloadPlugins = Module["preloadPlugins"];
-  /* Patched for browser startup: noExitRuntime was already captured before legacyModuleProp(). */
+  /* Patched for browser startup: noExitRuntime is already captured before legacyModuleProp(). */
   if (Module["print"]) out = Module["print"];
   if (Module["printErr"]) err = Module["printErr"];
-  if (Module["wasmBinary"]) wasmBinary = Module["wasmBinary"];
+  /* Patched for browser startup: wasmBinary is loaded through locateFile/readAsync. */
   // End ATMODULES hooks
   if (Module["arguments"]) arguments_ = Module["arguments"];
   if (Module["thisProgram"]) thisProgram = Module["thisProgram"];

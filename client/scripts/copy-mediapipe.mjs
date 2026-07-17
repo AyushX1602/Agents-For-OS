@@ -28,14 +28,31 @@ const COPIES = [
 ]
 
 function patchTasksVisionWasm(dst) {
-  const needle = 'if (Module["noExitRuntime"]) noExitRuntime = Module["noExitRuntime"];'
-  const replacement = '/* Patched for browser startup: noExitRuntime was already captured before legacyModuleProp(). */'
+  const patches = [
+    {
+      needle: 'if (Module["noExitRuntime"]) noExitRuntime = Module["noExitRuntime"];',
+      replacement: '/* Patched for browser startup: noExitRuntime is already captured before legacyModuleProp(). */'
+    },
+    {
+      needle: 'if (Module["wasmBinary"]) wasmBinary = Module["wasmBinary"];',
+      replacement: '/* Patched for browser startup: wasmBinary is loaded through locateFile/readAsync. */'
+    }
+  ]
+
   for (const file of readdirSync(dst)) {
     if (!file.endsWith('.js')) continue
     const path = resolve(dst, file)
-    const before = readFileSync(path, 'utf8')
-    if (!before.includes(needle)) continue
-    writeFileSync(path, before.replaceAll(needle, replacement))
+    let next = readFileSync(path, 'utf8')
+    let patched = false
+
+    for (const { needle, replacement } of patches) {
+      if (!next.includes(needle)) continue
+      next = next.replaceAll(needle, replacement)
+      patched = true
+    }
+
+    if (!patched) continue
+    writeFileSync(path, next)
     console.log(`[copy-mediapipe] patched Tasks-Vision runtime: ${file}`)
   }
 }
