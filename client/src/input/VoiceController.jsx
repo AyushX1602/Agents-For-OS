@@ -943,46 +943,9 @@ function useVoice(active = true) {
       .then((stream) => {
         console.log('[VoiceHook] Mic permission granted, got', stream.getTracks().length, 'tracks')
 
-        // ── Mic audio level diagnostic ──
-        // Keep stream alive to monitor audio levels and prove mic is working
-        micStreamRef.current = stream
-        try {
-          const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-          audioContextRef.current = audioCtx
-          const source = audioCtx.createMediaStreamSource(stream)
-          const analyser = audioCtx.createAnalyser()
-          analyser.fftSize = 256
-          source.connect(analyser)
-          const dataArray = new Uint8Array(analyser.frequencyBinCount)
-
-          let peakLevel = 0
-          const checkLevel = () => {
-            if (isCleanupRef.current) return
-            analyser.getByteFrequencyData(dataArray)
-            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-            const level = Math.round((avg / 255) * 100)
-            if (level > peakLevel) peakLevel = level
-            setMicLevel(level)
-            requestAnimationFrame(checkLevel)
-          }
-          checkLevel()
-
-          // After 3 seconds, report mic diagnostic
-          setTimeout(() => {
-            if (!isCleanupRef.current) {
-              if (peakLevel < 2) {
-                console.error('[VoiceHook] ⚠ MIC DIAGNOSTIC: No audio detected! Peak level:', peakLevel, '— mic may be muted or wrong device selected')
-                addNotification('⚠️ Microphone is not picking up any sound — check that the correct mic is selected and not muted', 'error')
-              } else {
-                console.log('[VoiceHook] ✅ MIC DIAGNOSTIC: Audio detected. Peak level:', peakLevel)
-              }
-            }
-          }, 3000)
-        } catch (audioErr) {
-          console.warn('[VoiceHook] Audio level monitoring failed:', audioErr)
-          // Non-critical — still proceed with speech recognition
-          stream.getTracks().forEach(t => t.stop())
-        }
+        // Release the getUserMedia stream tracks so webkitSpeechRecognition
+        // gets full, un-contended access to the microphone device on Windows/Chrome.
+        stream.getTracks().forEach(t => t.stop())
 
         if (!isCleanupRef.current) {
           console.log('[VoiceHook] Starting recognition...')
