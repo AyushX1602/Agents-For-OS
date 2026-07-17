@@ -516,6 +516,26 @@ const handlers = {
       return { deleted: true, title: target.title }
     }
     return { error: 'Must provide reminder_id or search_title' }
+  },
+
+  // ── Mem0 Long-Term Memory Tools ──────────────────────────────────────────
+  async remember_this({ text }, context) {
+    const memSvc = require('./memory')
+    const userId = context?.sessionId
+    if (!userId) return { error: 'No user session to associate memory with' }
+    if (!text)   return { error: 'Nothing to remember — provide a text to store' }
+    await memSvc.addMemory(userId, text, { source: 'explicit-user-request' })
+    return { saved: true, memory: text }
+  },
+
+  async what_do_you_know_about_me(_, context) {
+    const memSvc = require('./memory')
+    const userId = context?.sessionId
+    if (!userId) return { memories: [], message: 'No user session found.' }
+    const all = await memSvc.getAllMemories(userId)
+    if (!all.length) return { memories: [], message: "I don't have any memories about you yet." }
+    const list = all.map((m, i) => `${i + 1}. ${m.memory || JSON.stringify(m)}`).join('\n')
+    return { memories: all, message: `Here's what I know about you:\n${list}` }
   }
 }
 
@@ -964,6 +984,27 @@ const toolDeclarations = [
         label: { type: 'STRING', description: 'Label of the entry to delete' }
       },
       required: ['pin', 'label']
+    }
+  },
+  // ── Mem0 Long-Term Memory Tools ─────────────────────────────────────
+  {
+    name: 'remember_this',
+    description: 'Explicitly save something the user asked IRIS to remember (e.g. "Remember that I take Metformin", "Remember my son is called Rahul"). Only call this when the user explicitly says remember / save / note this.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        text: { type: 'STRING', description: 'Exact fact or statement to store in long-term memory' }
+      },
+      required: ['text']
+    }
+  },
+  {
+    name: 'what_do_you_know_about_me',
+    description: 'Return a friendly list of everything IRIS has stored about the user in long-term memory. Call when user asks "what do you remember about me?", "what do you know about me?", or similar.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {},
+      required: []
     }
   }
 ]

@@ -33,6 +33,7 @@ const { normalizeIndianVoiceCommand } = require('./indianVoiceNormalize')
 const { chatWithOpenRouter, isOpenRouterAvailable, getOpenRouterStatus } = require('./openRouterClient')
 const { isSarvamEnabled, sarvamChat, SarvamDisabledError } = require('./sarvam')
 const { executeToolCalls, summarizeOutcome } = require('./toolProtocol')
+const memoryService = require('./memory')
 const _process = require('process')  // Reliable ref — avoids Node 24 CJS scope quirks
 
 // ── Configuration (deferred to avoid module-init-order issues) ──────────────
@@ -306,7 +307,7 @@ CRITICAL: To perform ANY action (create/edit/delete/move files, open apps, set r
 }
 
 // ── Load persistent memory into context ─────────────────────────────────────
-
+// Legacy local JSON reader (kept for backward compat with data/memory.json)
 function loadMemoryContext(userName) {
   try {
     const fs = require('fs')
@@ -337,6 +338,55 @@ function loadMemoryContext(userName) {
   } catch (_) {
     return ''
   }
+}
+
+/**
+ * Fetch Mem0 long-term memories for a user and format them as a prompt section.
+ * Returns '' if empty or on any error — never throws.
+ * @param {string} userId
+ * @param {string} query
+ * @returns {Promise<string>}
+ */
+async function loadMem0Context(userId, query) {
+  if (!userId) return ''
+  try {
+    const memories = await memoryService.searchMemories(userId, query, 6)
+    if (!memories.length) return ''
+    const lines = memories.map(m => `- ${m.memory || JSON.stringify(m)}`)
+    return `\n\nKnown about this user (from long-term memory):\n${lines.join('\n')}`
+  } catch (_) {
+    return ''
+  }
+}
+
+/**
+ * After a completed IRIS interaction, extract durable facts and save to Mem0.
+ * Fire-and-forget — never blocks the caller.
+ * @param {string} userId
+ * @param {string} userMessage
+ * @param {string} assistantReply
+ */
+function extractAndSaveMemories(userId, userMessage, assistantReply) {
+  if (!userId) return
+  // Extract patterns: name, preference, language choice, app mentions, relationships
+  const combined = `User said: ${userMessage}\nAssistant replied: ${assistantReply}`
+  const patterns = [
+    { re: /my name is ([A-Z][a-z]+(?: [A-Z][a-z]+)?)/i,  prefix: 'User name: ' },
+    { re: /i(?:'m| am) ([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i, prefix: 'User is: ' },
+    { re: /i (?:prefer|like|love|use) (.{4,60})/i,        prefix: 'Preference: ' },
+    { re: /(?:call me|known as) ([A-Za-z]+)/i,            prefix: 'Preferred name: ' },
+    { re: /(?:my|the) language (?:is |to )([a-zA-Z]+)/i,  prefix: 'Language: ' },
+    { re: /(?:open|use) (\w+) (?:a lot|often|frequently)/i, prefix: 'Frequent app: ' },
+  ]
+  const facts = []
+  for (const { re, prefix } of patterns) {
+    const m = combined.match(re)
+    if (m) facts.push(prefix + m[1])
+  }
+  if (!facts.length) return
+  // Fire-and-forget — async, never awaited by caller
+  const text = facts.join('. ')
+  memoryService.addMemory(userId, text, { auto: true }).catch(() => {})
 }
 
 // ── Shared session-history helpers ───────────────────────────────────────────
@@ -466,10 +516,14 @@ async function processWithIris(message, context, signal) {
     if (ctxParts.length) userMsg = `[OS State: ${ctxParts.join(' | ')}]\n\n${message}`
   }
 
-  // Append memory context + user profile/known book
-  const memCtx = loadMemoryContext(context.sessionId)
-  if (memCtx)  userMsg += memCtx
-  if (userCtx) userMsg += userCtx
+  // Append memory context (Mem0 long-term + legacy local) + user profile/known book
+  const [mem0Ctx, legacyMemCtx] = await Promise.all([
+    loadMem0Context(context.sessionId, message),
+    Promise.resolve(loadMemoryContext(context.sessionId))
+  ])
+  if (mem0Ctx)      userMsg += mem0Ctx
+  if (legacyMemCtx) userMsg += legacyMemCtx
+  if (userCtx)      userMsg += userCtx
 
   // Try each Gemini model until one succeeds
   let lastError = null
@@ -554,6 +608,8 @@ async function processWithIris(message, context, signal) {
 
         // Persist and return — NEVER fall through to the next model after tools ran
         persistTurn(context, message, finalText, chatHistory)
+        // Fire-and-forget memory extraction
+        extractAndSaveMemories(context.sessionId, message, finalText)
 
         return {
           message:  finalText,
@@ -571,6 +627,8 @@ async function processWithIris(message, context, signal) {
 
       // ── Persist turn via shared helper ────────────────────────────────
       persistTurn(context, message, responseText || 'I processed your request.', chatHistory)
+      // Fire-and-forget memory extraction
+      extractAndSaveMemories(context.sessionId, message, responseText || '')
 
       return {
         message: responseText || 'I processed your request.',
@@ -633,6 +691,8 @@ Available tools (use the [[TOOL_CALL: ...]] format):
 - read_directory({"directory_path": "..."}) — list folder contents
 - manage_file({"action": "delete|move|copy|rename", "source_path": "..."}) — manage files
 - run_terminal({"command": "..."}) — run safe shell commands
+- remember_this({"text": "..."}) — explicitly store a fact the user asks to remember (e.g. "remember my son is Rahul")
+- what_do_you_know_about_me({}) — list all stored long-term memories about the user
 
 For compound requests like "open terminal and find my IP address", emit BOTH open_app({"app_name":"Terminal"}) and run_terminal({"command":"ipconfig"}). Do not stop after opening an app when the user also asks you to type, run, edit, create, or change something inside it.
 
@@ -693,9 +753,13 @@ async function processWithOpenRouter(message, context) {
 
   // Build a context-rich prompt for the free model
   let prompt = message
-  const memCtx = loadMemoryContext(context.sessionId)
-  if (memCtx)  prompt += memCtx
-  if (userCtx) prompt += userCtx
+  const [mem0Ctx, legacyMemCtx] = await Promise.all([
+    loadMem0Context(context.sessionId, message),
+    Promise.resolve(loadMemoryContext(context.sessionId))
+  ])
+  if (mem0Ctx)      prompt += mem0Ctx
+  if (legacyMemCtx) prompt += legacyMemCtx
+  if (userCtx)      prompt += userCtx
 
   if (context.osState) {
     const state = context.osState
@@ -762,9 +826,13 @@ async function processWithSarvam(message, context) {
   const userCtx        = await loadUserContext(context)
 
   let prompt = message
-  const memCtx = loadMemoryContext(context.sessionId)
-  if (memCtx)  prompt += memCtx
-  if (userCtx) prompt += userCtx
+  const [mem0Ctx, legacyMemCtx] = await Promise.all([
+    loadMem0Context(context.sessionId, message),
+    Promise.resolve(loadMemoryContext(context.sessionId))
+  ])
+  if (mem0Ctx)      prompt += mem0Ctx
+  if (legacyMemCtx) prompt += legacyMemCtx
+  if (userCtx)      prompt += userCtx
 
   if (context.osState) {
     const state = context.osState
