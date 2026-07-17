@@ -107,11 +107,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')))
+// Serve static files in production only if client/dist exists
+const fs = require('fs')
+const clientDistPath = path.join(__dirname, '../client/dist')
+if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath))
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'))
+    res.sendFile(path.join(clientDistPath, 'index.html'))
+  })
+} else {
+  // Default route for API-only server
+  app.get('/', (req, res) => {
+    res.json({ message: 'SavitaOS Backend API', status: 'ok', timestamp: new Date().toISOString() })
   })
 }
 
