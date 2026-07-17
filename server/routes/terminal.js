@@ -30,6 +30,9 @@ function isLocalAddress(value) {
 }
 
 function isLocalDevRequest(req) {
+  // Explicitly allow demo mode in production via env var
+  if (process.env.TERMINAL_ALLOW_DEMO === 'true') return true
+
   if (process.env.NODE_ENV === 'production') return false
   if (process.env.TERMINAL_DEV_ALLOW_UNAUTH === 'false') return false
 
@@ -43,7 +46,7 @@ function isLocalDevRequest(req) {
 function requireTerminalAuth(req, res, next) {
   if (req.session?.userName) return requireAuth(req, res, next)
   if (isLocalDevRequest(req)) {
-    req.user = { userName: process.env.TERMINAL_DEV_USER || 'local-dev' }
+    req.user = { userName: process.env.TERMINAL_DEV_USER || 'demo' }
     return next()
   }
   return requireAuth(req, res, next)
