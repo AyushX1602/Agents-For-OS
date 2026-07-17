@@ -970,18 +970,8 @@ function useVoice(active = true) {
       if (restartTimer.current) clearTimeout(restartTimer.current)
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       try { recognition.stop() } catch {}
-      // Clean up audio monitoring
-      if (audioContextRef.current) {
-        try { audioContextRef.current.close() } catch {}
-        audioContextRef.current = null
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop())
-        micStreamRef.current = null
-      }
       setIsListening(false)
       setTranscript('')
-      setMicLevel(0)
     }
   }, [voiceEnabled, active, voiceLocale, addNotification])
 
