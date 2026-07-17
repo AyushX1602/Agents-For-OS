@@ -211,7 +211,6 @@ function useVoice(active = true) {
   const [lastCommand, setLastCommand] = useState(null) // { text, feedback, time }
   const recognitionRef = useRef(null)
   const retryCount = useRef(0)
-  const noSpeechCount = useRef(0) // track consecutive no-speech for backoff
   const restartTimer = useRef(null)
   const silenceTimerRef = useRef(null)
   const lastHeardRef = useRef('')
@@ -888,7 +887,6 @@ function useVoice(active = true) {
       if (!isCleanupRef.current) {
         setIsListening(true)
         retryCount.current = 0
-        noSpeechCount.current = 0 // reset backoff on successful start
       }
     }
 
@@ -896,15 +894,11 @@ function useVoice(active = true) {
       if (isCleanupRef.current) return // Don't restart during cleanup
 
       if (voiceEnabledRef.current && !isProcessingRef.current && retryCount.current < 5) {
-        // Exponential backoff for no-speech: 1.5s → 3s → 5s, then reset
-        const nsc = noSpeechCount.current
-        const delay = nsc === 0 ? 1500 : nsc < 3 ? 3000 : 5000
         restartTimer.current = setTimeout(() => {
-          try { recognition.start() } catch (err) {
-            console.error('[VoiceHook] Restart failed:', err)
-            setIsListening(false)
+          if (!isCleanupRef.current && voiceEnabledRef.current) {
+            try { recognition.start() } catch (_) {}
           }
-        }, delay)
+        }, 100)
       } else {
         setIsListening(false)
       }
@@ -919,50 +913,24 @@ function useVoice(active = true) {
       }
       if (e.error === 'audio-capture' || e.error === 'not-allowed') {
         if (retryCount.current === 0) {
-          addNotification('🎤 Microphone access denied — please allow microphone in your browser settings', 'error')
+          addNotification('🎤 Microphone access denied — please allow microphone in browser settings', 'error')
         }
         retryCount.current = 99
         return
       }
-      if (e.error === 'no-speech') {
-        // Normal when user hasn't spoken yet — increment backoff counter
-        noSpeechCount.current = Math.min(noSpeechCount.current + 1, 5)
-        return
-      }
-      if (e.error === 'aborted') return
+      if (e.error === 'no-speech' || e.error === 'aborted') return
     }
 
-    // Store and start
+    // Store and start directly (webkitSpeechRecognition manages mic access natively)
     recognitionRef.current = recognition
 
-    // Request mic permission and start
-    console.log('[VoiceHook] Requesting mic permission via getUserMedia...')
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then((stream) => {
-        console.log('[VoiceHook] Mic permission granted, got', stream.getTracks().length, 'tracks')
-
-        // Release the getUserMedia stream tracks so webkitSpeechRecognition
-        // gets full, un-contended access to the microphone device on Windows/Chrome.
-        stream.getTracks().forEach(t => t.stop())
-
-        if (!isCleanupRef.current) {
-          console.log('[VoiceHook] Starting recognition...')
-          try {
-            recognition.start()
-            console.log('[VoiceHook] recognition.start() called successfully')
-          } catch (err) {
-            console.error('[VoiceHook] recognition.start() threw:', err)
-          }
-        } else {
-          console.log('[VoiceHook] Cleanup happened before start — skipping')
-        }
-      })
-      .catch((err) => {
-        console.error('[VoiceHook] getUserMedia FAILED:', err)
-        if (!isCleanupRef.current) {
-          addNotification('🎤 Microphone access denied — please allow mic in browser settings', 'error')
-        }
-      })
+    if (!isCleanupRef.current) {
+      try {
+        recognition.start()
+      } catch (err) {
+        console.error('[VoiceHook] recognition.start() threw:', err)
+      }
+    }
 
     // Cleanup
     return () => {
