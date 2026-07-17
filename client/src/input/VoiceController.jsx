@@ -211,6 +211,7 @@ function useVoice(active = true) {
   const [lastCommand, setLastCommand] = useState(null) // { text, feedback, time }
   const recognitionRef = useRef(null)
   const retryCount = useRef(0)
+  const noSpeechCount = useRef(0) // track consecutive no-speech for backoff
   const restartTimer = useRef(null)
   const silenceTimerRef = useRef(null)
   const lastHeardRef = useRef('')
@@ -218,9 +219,6 @@ function useVoice(active = true) {
   const lastExecutedAtRef = useRef(0)
   const isCleanupRef = useRef(false) // Track if we're cleaning up
   const isProcessingRef = useRef(false)
-  const [micLevel, setMicLevel] = useState(0) // 0-100 audio level for diagnostics
-  const audioContextRef = useRef(null)
-  const micStreamRef = useRef(null)
 
   const { voiceEnabled, voiceLocale = 'en-US', addNotification } = useOsStore()
 
@@ -887,35 +885,32 @@ function useVoice(active = true) {
     }
 
     recognition.onstart = () => {
-      console.log('[VoiceHook] recognition.onstart fired')
       if (!isCleanupRef.current) {
         setIsListening(true)
         retryCount.current = 0
+        noSpeechCount.current = 0 // reset backoff on successful start
       }
     }
 
     recognition.onend = () => {
-      console.log('[VoiceHook] recognition.onend fired — cleanup:', isCleanupRef.current, 'processing:', isProcessingRef.current, 'voiceEnabled:', voiceEnabledRef.current, 'retries:', retryCount.current)
       if (isCleanupRef.current) return // Don't restart during cleanup
 
-      // Only auto-restart if voice is still enabled and we're not processing a command
       if (voiceEnabledRef.current && !isProcessingRef.current && retryCount.current < 5) {
-        console.log('[VoiceHook] Scheduling restart in 300ms...')
+        // Exponential backoff for no-speech: 1.5s → 3s → 5s, then reset
+        const nsc = noSpeechCount.current
+        const delay = nsc === 0 ? 1500 : nsc < 3 ? 3000 : 5000
         restartTimer.current = setTimeout(() => {
-          console.log('[VoiceHook] Restarting recognition...')
           try { recognition.start() } catch (err) {
             console.error('[VoiceHook] Restart failed:', err)
             setIsListening(false)
           }
-        }, 300)
+        }, delay)
       } else {
-        console.log('[VoiceHook] NOT restarting — setting isListening=false')
         setIsListening(false)
       }
     }
 
     recognition.onerror = (e) => {
-      console.warn('[VoiceHook] recognition.onerror:', e.error)
       if (isCleanupRef.current) return
 
       if (e.error === 'network') {
@@ -923,15 +918,18 @@ function useVoice(active = true) {
         return
       }
       if (e.error === 'audio-capture' || e.error === 'not-allowed') {
-        console.error('[VoiceHook] FATAL — mic denied or audio-capture failed')
         if (retryCount.current === 0) {
-          addNotification('🎤 Microphone access denied — please allow microphone in your browser to use voice commands', 'error')
+          addNotification('🎤 Microphone access denied — please allow microphone in your browser settings', 'error')
         }
         retryCount.current = 99
         return
       }
-      if (e.error === 'no-speech' || e.error === 'aborted') return
-      console.warn('[VoiceHook] Unknown speech error:', e.error)
+      if (e.error === 'no-speech') {
+        // Normal when user hasn't spoken yet — increment backoff counter
+        noSpeechCount.current = Math.min(noSpeechCount.current + 1, 5)
+        return
+      }
+      if (e.error === 'aborted') return
     }
 
     // Store and start
@@ -987,7 +985,7 @@ function useVoice(active = true) {
     }
   }, [voiceEnabled, active, voiceLocale, addNotification])
 
-  return { isListening, transcript, lastCommand, stopListening, micLevel }
+  return { isListening, transcript, lastCommand, stopListening }
 }
 
 // ==================== UI COMPONENT ==================== //
@@ -995,7 +993,7 @@ function VoiceController() {
   const { voiceEnabled, toggleVoice, setVoiceEnabled, addNotification } = useOsStore()
   // Voice mode: 'commands' (Mode A - Web Speech API) or 'live' (Mode B - Gemini Live)
   const [voiceMode, setVoiceMode] = useState('commands')
-  const { isListening, transcript, lastCommand, stopListening, micLevel } = useVoice(voiceMode === 'commands')
+  const { isListening, transcript, lastCommand, stopListening } = useVoice(voiceMode === 'commands')
   const gemini = useGeminiVoice()
   const [showFeedback, setShowFeedback] = useState(false)
 
@@ -1102,7 +1100,7 @@ function VoiceController() {
         )}
       </AnimatePresence>
 
-      {/* ── Mode A: Listening indicator with mic level ── */}
+      {/* ── Mode A: Listening indicator ── */}
       <AnimatePresence>
         {!isLiveMode && voiceEnabled && isListening && (
           <motion.div
@@ -1115,23 +1113,6 @@ function VoiceController() {
               <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
               Listening... say a command
             </div>
-            {/* Mic level bar */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] opacity-70">MIC</span>
-              <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-75"
-                  style={{
-                    width: `${Math.min(100, micLevel * 3)}%`,
-                    backgroundColor: micLevel < 2 ? '#ef4444' : micLevel < 10 ? '#f59e0b' : '#4ade80'
-                  }}
-                />
-              </div>
-              <span className="text-[10px] opacity-70 w-6 text-right">{micLevel}</span>
-            </div>
-            {micLevel < 2 && (
-              <span className="text-[10px] text-red-200">⚠ No audio detected — check mic</span>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
