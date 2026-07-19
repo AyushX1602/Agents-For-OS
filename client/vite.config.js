@@ -8,11 +8,17 @@ export default defineConfig({
     headers: {
       'Permissions-Policy': 'camera=*, microphone=*',
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
     },
     proxy: {
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
       '/ws':  { target: 'ws://localhost:3001', ws: true }
     }
+  },
+  optimizeDeps: {
+    // Keep tasks-vision OUT of the Vite bundle so it doesn't share
+    // the Emscripten Module global with @mediapipe/hands
+    exclude: ['@mediapipe/tasks-vision'],
   },
   build: {
     // Warn on chunks > 800 KB instead of the default 500 KB

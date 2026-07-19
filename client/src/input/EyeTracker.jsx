@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
+// FaceLandmarker is loaded dynamically at runtime (not bundled)
+// to prevent Emscripten Module.arguments conflict with @mediapipe/hands.
 import useOsStore from '../store/osStore'
 import { acquireCamera, releaseCamera } from './sharedCamera'
 
@@ -21,21 +22,49 @@ const CAL_PTS = [
   {x:0.1,y:0.9},{x:0.5,y:0.9},{x:0.9,y:0.9},
 ]
 
-// Use the locally-copied WASM files (served by Vite/Express with correct MIME)
-// so runtime and npm package are always the same version.
-// Files are copied from node_modules/@mediapipe/tasks-vision/wasm → public/mediapipe-wasm/
-const TASKS_VISION_LOCAL = '/mediapipe-wasm'
+// Load WASM from CDN so it always matches the model version and avoids
+// Module.arguments conflicts caused by @mediapipe/hands sharing the same
+// Emscripten Module object.
+const TASKS_VISION_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
 const FACE_LANDMARKER_MODEL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+
+// Singleton: only one FilesetResolver + FaceLandmarker instance across hot-reloads
+let _visionFileset = null
+let _faceLandmarkerSingleton = null
 
 const IRIS_SMOOTHING_ALPHA = 0.08
 const SCREEN_SMOOTHING_ALPHA = 0.18
 const SCREEN_DEADZONE_PX = 14
 const MAX_CURSOR_STEP_PX = 90
 
+// ── Lazy-load @mediapipe/tasks-vision dynamically ───────────────────────────
+// Using a local npm import via dynamic import() keeps it out of the main chunk
+// while still avoiding the CDN CORS issues. The optimizeDeps.exclude in
+// vite.config.js ensures it won't be pre-bundled with @mediapipe/hands.
+let _tasksVisionPromise = null
+function getTasksVision() {
+  if (!_tasksVisionPromise) {
+    _tasksVisionPromise = import('@mediapipe/tasks-vision').catch(err => {
+      _tasksVisionPromise = null
+      throw err
+    })
+  }
+  return _tasksVisionPromise
+}
+
 async function createFaceLandmarker(delegate) {
-  const vision = await FilesetResolver.forVisionTasks(TASKS_VISION_LOCAL)
-  return FaceLandmarker.createFromOptions(vision, {
+  const { FaceLandmarker, FilesetResolver } = await getTasksVision()
+  if (typeof window !== 'undefined') {
+    window.Module = undefined;
+  }
+  if (!_visionFileset) {
+    _visionFileset = await FilesetResolver.forVisionTasks(TASKS_VISION_CDN)
+  }
+  if (typeof window !== 'undefined') {
+    window.Module = undefined;
+  }
+  return FaceLandmarker.createFromOptions(_visionFileset, {
     baseOptions: {
       modelAssetPath: FACE_LANDMARKER_MODEL,
       ...(delegate ? { delegate } : {}),
@@ -49,11 +78,28 @@ async function createFaceLandmarker(delegate) {
 }
 
 async function loadFaceLandmarker() {
+  // Return existing instance if still alive
+  if (_faceLandmarkerSingleton) return _faceLandmarkerSingleton
   try {
-    return await createFaceLandmarker('GPU')
+    if (typeof window !== 'undefined') {
+      window.Module = undefined;
+    }
+    _faceLandmarkerSingleton = await createFaceLandmarker('GPU')
+    return _faceLandmarkerSingleton
   } catch (gpuErr) {
-    console.warn('[EyeTracker] GPU FaceLandmarker failed; retrying with CPU:', gpuErr.message)
-    return createFaceLandmarker(null)
+    const msg = gpuErr.message || ''
+    // Module.arguments conflict or GPU init failure → fall back to CPU
+    console.warn('[EyeTracker] GPU FaceLandmarker failed; retrying with CPU:', msg)
+    try {
+      if (typeof window !== 'undefined') {
+        window.Module = undefined;
+      }
+      _faceLandmarkerSingleton = await createFaceLandmarker(null)
+      return _faceLandmarkerSingleton
+    } catch (cpuErr) {
+      _visionFileset = null  // reset so next retry re-creates fileset
+      throw cpuErr
+    }
   }
 }
 
@@ -206,7 +252,11 @@ export default function EyeTracker() {
     animRef.current = null
     clearInterval(hzIntervalRef.current)
     hzIntervalRef.current = null
-    if (faceLMRef.current) { try { faceLMRef.current.close() } catch(_){} ; faceLMRef.current = null }
+    if (faceLMRef.current) {
+      try { faceLMRef.current.close() } catch(_){}
+      faceLMRef.current = null
+      _faceLandmarkerSingleton = null  // allow fresh init on next enable
+    }
     releaseEyeCamera()
     modelRef.current = null
     calDataRef.current = { iris:[], screen:[] }

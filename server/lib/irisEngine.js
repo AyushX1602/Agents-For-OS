@@ -31,6 +31,8 @@ const { toolRegistry, toolDeclarations } = require('./irisTools')
 const { spirit } = require('./spirit')
 const { normalizeIndianVoiceCommand } = require('./indianVoiceNormalize')
 const { chatWithOpenRouter, isOpenRouterAvailable, getOpenRouterStatus } = require('./openRouterClient')
+const { chatWithGroq, isGroqAvailable } = require('./groqClient')
+const { chatWithOpenAI, isOpenAIAvailable } = require('./openAIClient')
 const { isSarvamEnabled, sarvamChat, SarvamDisabledError } = require('./sarvam')
 const { executeToolCalls, summarizeOutcome } = require('./toolProtocol')
 const memoryService = require('./memory')
@@ -686,7 +688,8 @@ Available tools (use the [[TOOL_CALL: ...]] format):
 - read_notes({}) — list all notes
 - save_memory({"category": "identity|preferences|projects|relationships", "key": "...", "value": "..."}) — remember personal info
 - recall_memory({"key": "..."}) — recall a memory
-- write_file({"file_path": "...", "content": "..."}) — create/update a file
+- create_folder({"folder_path": "..."}) — create a new directory/folder. ALWAYS use this for "create a folder" requests. Example: create_folder({"folder_path": "Downloads/Ayush"})
+- write_file({"file_path": "...", "content": "..."}) — create/update a file (use create_folder for folders, not this)
 - read_file({"file_path": "..."}) — read file contents
 - read_directory({"directory_path": "..."}) — list folder contents
 - manage_file({"action": "delete|move|copy|rename", "source_path": "..."}) — manage files
@@ -817,6 +820,88 @@ async function processWithOpenRouter(message, context) {
   }
 }
 
+// ── Groq Fallback ──────────────────────────────────────────────────────────
+
+async function processWithGroq(message, context) {
+  const sessionHistory = await loadSessionHistory(context, 10)
+  const userCtx        = await loadUserContext(context)
+
+  let prompt = message
+  const [mem0Ctx, legacyMemCtx] = await Promise.all([
+    loadMem0Context(context.sessionId, message),
+    Promise.resolve(loadMemoryContext(context.sessionId))
+  ])
+  if (mem0Ctx)      prompt += mem0Ctx
+  if (legacyMemCtx) prompt += legacyMemCtx
+  if (userCtx)      prompt += userCtx
+
+  if (context.osState) {
+    const state = context.osState
+    const parts = []
+    if (state.openWindows?.length) parts.push(`Open apps: ${state.openWindows.join(', ')}`)
+    if (state.userName) parts.push(`User: ${state.userName}`)
+    if (parts.length) prompt = `[OS State: ${parts.join(' | ')}]\n\n${prompt}`
+  }
+
+  let historyBlock = ''
+  if (sessionHistory.length > 0) {
+    const lines = sessionHistory.map(t => `${t.role === 'assistant' ? 'IRIS' : 'User'}: ${t.content}`).join('\n')
+    historyBlock = `Recent conversation:\n${lines}\n\n`
+  }
+
+  const systemPrompt = TOOL_PROTOCOL_PROMPT + buildLanguageInstruction(context)
+  const reply = await chatWithGroq(historyBlock + prompt, systemPrompt)
+  if (!reply) return null
+
+  const exec = await executeToolCalls(reply, context)
+  if (exec.anyCalls) {
+    return await finalizeToolReply(chatWithGroq, message, exec, systemPrompt, context, sessionHistory, 'groq')
+  }
+  persistTurn(context, message, exec.cleanReply, sessionHistory)
+  return { message: exec.cleanReply, source: 'groq', action: null, anyFailed: false, tools: [], toolData: [] }
+}
+
+// ── OpenAI Fallback ─────────────────────────────────────────────────────────
+
+async function processWithOpenAI(message, context) {
+  const sessionHistory = await loadSessionHistory(context, 10)
+  const userCtx        = await loadUserContext(context)
+
+  let prompt = message
+  const [mem0Ctx, legacyMemCtx] = await Promise.all([
+    loadMem0Context(context.sessionId, message),
+    Promise.resolve(loadMemoryContext(context.sessionId))
+  ])
+  if (mem0Ctx)      prompt += mem0Ctx
+  if (legacyMemCtx) prompt += legacyMemCtx
+  if (userCtx)      prompt += userCtx
+
+  if (context.osState) {
+    const state = context.osState
+    const parts = []
+    if (state.openWindows?.length) parts.push(`Open apps: ${state.openWindows.join(', ')}`)
+    if (state.userName) parts.push(`User: ${state.userName}`)
+    if (parts.length) prompt = `[OS State: ${parts.join(' | ')}]\n\n${prompt}`
+  }
+
+  let historyBlock = ''
+  if (sessionHistory.length > 0) {
+    const lines = sessionHistory.map(t => `${t.role === 'assistant' ? 'IRIS' : 'User'}: ${t.content}`).join('\n')
+    historyBlock = `Recent conversation:\n${lines}\n\n`
+  }
+
+  const systemPrompt = TOOL_PROTOCOL_PROMPT + buildLanguageInstruction(context)
+  const reply = await chatWithOpenAI(historyBlock + prompt, systemPrompt)
+  if (!reply) return null
+
+  const exec = await executeToolCalls(reply, context)
+  if (exec.anyCalls) {
+    return await finalizeToolReply(chatWithOpenAI, message, exec, systemPrompt, context, sessionHistory, 'openai')
+  }
+  persistTurn(context, message, exec.cleanReply, sessionHistory)
+  return { message: exec.cleanReply, source: 'openai', action: null, anyFailed: false, tools: [], toolData: [] }
+}
+
 // ── Sarvam Engine (Tier 1.5 — Indian-language LLM) ──────────────────────────
 
 async function processWithSarvam(message, context) {
@@ -939,7 +1024,7 @@ async function processWithSpirit(message, context, prisma) {
  * Defaults to ['gemini', 'sarvam', 'openrouter', 'spirit'].
  */
 function getEngineOrder() {
-  const raw = _process.env.AI_ENGINE_ORDER || 'gemini,sarvam,openrouter,spirit'
+  const raw = _process.env.AI_ENGINE_ORDER || 'gemini,openai,groq,sarvam,openrouter,spirit'
   return raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 }
 
@@ -1016,12 +1101,34 @@ async function process(message, context, prisma) {
         return r
       }
 
+      if (engine === 'openai') {
+        if (!isOpenAIAvailable()) { console.log('[IrisEngine] OpenAI unavailable (no key), skipping'); continue }
+        console.log('[IrisEngine] Trying OpenAI (gpt-4o-mini)...')
+        const r = await processWithOpenAI(message, context)
+        if (r) {
+          if (lastErr) r.fallbackReason = lastErr.message
+          return r
+        }
+        continue
+      }
+
       if (engine === 'openrouter') {
         if (!isOpenRouterAvailable()) { console.log('[IrisEngine] OpenRouter unavailable, skipping'); continue }
         console.log('[IrisEngine] Trying OpenRouter...')
         const r = await processWithOpenRouter(message, context)
         if (lastErr) r.fallbackReason = lastErr.message
         return r
+      }
+
+      if (engine === 'groq') {
+        if (!isGroqAvailable()) { console.log('[IrisEngine] Groq unavailable (no key), skipping'); continue }
+        console.log('[IrisEngine] Trying Groq (llama-3.3-70b)...')
+        const r = await processWithGroq(message, context)
+        if (r) {
+          if (lastErr) r.fallbackReason = lastErr.message
+          return r
+        }
+        continue
       }
 
       if (engine === 'spirit') {
