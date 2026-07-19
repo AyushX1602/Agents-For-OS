@@ -1,0 +1,33 @@
+version: api.keploy.io/v1beta1
+kind: Http
+name: test-3
+spec:
+  metadata: {}
+  req:
+    method: POST
+    proto_major: 1
+    proto_minor: 1
+    url: /api/voice/tts
+    header:
+      Accept: "*/*"
+      Content-Type: application/json
+      Host: localhost:3001
+      User-Agent: curl/8.20.0
+    body: '{"text":"नमस्ते, मैं स्पिरिट ओएस हूँ","languageCode":"hi-IN"}'
+    timestamp: 2026-07-19T09:15:20Z
+  resp:
+    status_code: 200
+    header:
+      Access-Control-Allow-Credentials: "true"
+      Access-Control-Allow-Origin: http://localhost:5173
+      Content-Type: application/json; charset=utf-8
+      Vary: Origin
+      X-Powered-By: Express
+    body: '{"mimeType":"audio/wav","engine":"gnani","audioBase64":"***REDACTED_AUDIO_PAYLOAD***"}'
+    timestamp: 2026-07-19T09:15:20Z
+  objects: []
+  assertions:
+    noise:
+      - body.audioBase64
+      - header.Date
+      - header.Etag

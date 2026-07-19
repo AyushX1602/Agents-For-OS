@@ -1,0 +1,33 @@
+version: api.keploy.io/v1beta1
+kind: Http
+name: test-6
+spec:
+  metadata: {}
+  req:
+    method: POST
+    proto_major: 1
+    proto_minor: 1
+    url: /api/agent/chat
+    header:
+      Accept: "*/*"
+      Content-Type: application/json
+      Host: localhost:3001
+      User-Agent: curl/8.20.0
+    body: '{"message":"hello, what can you do?"}'
+    timestamp: 2026-07-19T09:16:04Z
+  resp:
+    status_code: 200
+    header:
+      Access-Control-Allow-Credentials: "true"
+      Access-Control-Allow-Origin: http://localhost:5173
+      Content-Type: application/json; charset=utf-8
+      Vary: Origin
+      X-Powered-By: Express
+    body: '{"message":"I can help you with a wide range of tasks","source":"iris","agent":"iris"}'
+    timestamp: 2026-07-19T09:16:04Z
+  objects: []
+  assertions:
+    noise:
+      - body.duration_ms
+      - header.Date
+      - header.Etag

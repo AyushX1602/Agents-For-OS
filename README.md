@@ -166,6 +166,10 @@ For a stable hackathon recording:
 - `.env`, SQLite databases, generated logs, build output, and runtime user data are intentionally ignored.
 - Use `FS_ROOT=./demo-filesystem` for safe demos instead of exposing your full home directory.
 
+## API Testing with Keploy
+The backend API is tested with [Keploy](https://keploy.io) — recorded test suites live in `server/keploy/`. To replay: `cd server && keploy test -c "node index.js" --delay 10`.
+Covered routes: /api/health, /api/voice/status, /api/voice/tts (success + validation), /api/reminders, /api/agent/chat.
+
 ## License
 
 This project includes an MIT-style license in [LICENSE](LICENSE).

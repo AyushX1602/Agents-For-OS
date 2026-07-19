@@ -1,0 +1,32 @@
+version: api.keploy.io/v1beta1
+kind: Http
+name: test-5
+spec:
+  metadata: {}
+  req:
+    method: GET
+    proto_major: 1
+    proto_minor: 1
+    url: /api/reminders
+    header:
+      Accept: "*/*"
+      Host: localhost:3001
+      User-Agent: curl/8.20.0
+    body: ""
+    timestamp: 2026-07-19T09:15:37Z
+  resp:
+    status_code: 200
+    header:
+      Access-Control-Allow-Credentials: "true"
+      Access-Control-Allow-Origin: http://localhost:5173
+      Content-Type: application/json; charset=utf-8
+      Vary: Origin
+      X-Powered-By: Express
+    body: '[]'
+    timestamp: 2026-07-19T09:15:37Z
+  objects: []
+  assertions:
+    noise:
+      - header.Date
+      - header.Etag
+      - header.Set-Cookie

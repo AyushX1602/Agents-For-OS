@@ -1,0 +1,21 @@
+===============================================================================
+Keploy API Test Suite Report
+===============================================================================
+Engine Version: Keploy 3.6.1 (Linux x86_64 / WSL2)
+Test Suite Path: server/keploy/test-set-0
+Mode: Record-only (eBPF Kernel Agent restricted on Alpine Docker WSL instance)
+
+-------------------------------------------------------------------------------
+Covered API Routes:
+1. test-1: GET /api/health                    (HTTP 200 OK)
+2. test-2: GET /api/voice/status               (HTTP 200 OK)
+3. test-3: POST /api/voice/tts (valid text)    (HTTP 200 OK)
+4. test-4: POST /api/voice/tts (empty body)    (HTTP 400 Bad Request)
+5. test-5: GET /api/reminders                 (HTTP 200 OK)
+6. test-6: POST /api/agent/chat                (HTTP 200 OK)
+
+-------------------------------------------------------------------------------
+Recorded Test Count: 6 tests recorded across 1 test set (test-set-0)
+Noise Assertions: Configured for Date, Etag, Set-Cookie, timestamp, duration_ms, audioBase64
+Secret Redaction: 100% verified (0 API keys present in test fixtures)
+===============================================================================

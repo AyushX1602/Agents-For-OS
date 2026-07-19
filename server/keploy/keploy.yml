@@ -1,0 +1,15 @@
+version: 3.6.1
+path: server/keploy
+command: node index.js
+delay: 10
+noise:
+  global:
+    header:
+      - Date
+      - Etag
+      - Content-Length
+      - Set-Cookie
+    body:
+      - timestamp
+      - audioBase64
+      - duration_ms
