@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
+import './landing/landing.css'
 
 // Dev-only hash route: /#/dev/sign-collector → renders SignDataCollector
 // This is NOT shown in production (no bundle impact — lazy loaded)

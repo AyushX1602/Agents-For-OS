@@ -43,6 +43,26 @@ export default {
         'os-danger-muted':     'rgba(239,68,68,0.12)',
         'os-warning-muted':    'rgba(245,158,11,0.12)',
         'os-success-muted':    'rgba(16,185,129,0.12)',
+
+        // ── Landing page design tokens ───────────────────────
+        // These allow landing Tailwind classes to resolve correctly
+        // without conflicting with Spirit OS theme variables
+        'lp-surface':          '#f5f5f2',
+        'lp-surface-raised':   '#fbfbf8',
+        'lp-surface-darker':   '#e7e7e3',
+        'lp-ink':              'rgba(38,35,35,0.8)',
+        'lp-ink-strongest':    'rgba(38,35,35,0.9)',
+        'lp-ink-strong':       'rgba(38,35,35,0.85)',
+        'lp-ink-muted':        'rgba(38,35,35,0.7)',
+        'lp-ink-faint':        'rgba(38,35,35,0.5)',
+        'lp-ink-solid':        '#202020',
+        'lp-border-card':      '#dee2de',
+        'lp-border-pill':      '#e3e3e0',
+        'lp-feature-success':  '#34a853',
+        'lp-blue-section':     '#1a6fd1',
+        'lp-made-green':       '#549f4b',
+        'lp-background':       '#f5f5f2',
+        'lp-foreground':       '#171717',
       },
       fontFamily: {
         sans:            ['"DM Sans"', 'system-ui', 'sans-serif'],
@@ -54,6 +74,10 @@ export default {
         'window-title':  ['"DM Sans"', 'system-ui', 'sans-serif'],
         'mono-label':    ['"JetBrains Mono"', 'monospace'],
         'terminal-text': ['"JetBrains Mono"', 'monospace'],
+        // Landing page fonts
+        'neoris':        ['"TT Neoris"', 'system-ui', 'sans-serif'],
+        'ibm-plex-mono': ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        'departure-mono':['"Departure Mono"', 'ui-monospace', 'monospace'],
       },
       borderRadius: {
         'DEFAULT': '0.5rem',
