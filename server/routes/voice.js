@@ -17,6 +17,7 @@ const express = require('express')
 const router  = express.Router()
 const multer  = require('multer')
 const { isSarvamEnabled, sarvamTTS, sarvamSTT, sarvamTranslate, SarvamDisabledError } = require('../lib/sarvam')
+const { isGnaniEnabled, gnaniTTS, gnaniSTT } = require('../lib/gnani')
 
 // ── Multipart upload for STT audio (in-memory, max 10 MB) ───────────────────
 const upload = multer({
@@ -46,16 +47,30 @@ router.post('/tts', async (req, res) => {
       return res.status(400).json({ error: 'text too long (max 4000 chars)' })
     }
 
-    if (!isSarvamEnabled()) {
-      return res.json({ fallback: 'webspeech' })
+    // Tier 1: Gnani AI (hackathon partner — primary Indian voice engine)
+    if (isGnaniEnabled()) {
+      try {
+        const result = await gnaniTTS(text, { voice: req.body?.gnaniVoice })
+        return res.json(result)
+      } catch (err) {
+        console.warn('[Voice] Gnani TTS failed, trying Sarvam:', err.message)
+      }
     }
 
-    const result = await sarvamTTS(text, {
-      languageCode: languageCode || 'hi-IN',
-      speaker: speaker || undefined
-    })
+    // Tier 2: Sarvam (fallback)
+    if (isSarvamEnabled()) {
+      try {
+        const result = await sarvamTTS(text, {
+          languageCode: languageCode || 'hi-IN',
+          speaker: speaker || undefined
+        })
+        return res.json(result)
+      } catch (err) {
+        console.warn('[Voice] Sarvam TTS failed, falling back to webspeech:', err.message)
+      }
+    }
 
-    return res.json(result)
+    return res.json({ fallback: 'webspeech' })
   } catch (err) {
     return handleSarvamError(err, res)
   }
@@ -64,17 +79,33 @@ router.post('/tts', async (req, res) => {
 // ── POST /api/voice/stt ──────────────────────────────────────────────────────
 router.post('/stt', upload.single('audio'), async (req, res) => {
   try {
-    if (!isSarvamEnabled()) {
-      return res.json({ fallback: 'webspeech' })
-    }
-
     if (!req.file?.buffer) {
       return res.status(400).json({ error: 'audio file is required' })
     }
 
     const languageCode = req.body?.languageCode || 'hi-IN'
-    const result = await sarvamSTT(req.file.buffer, { languageCode })
-    return res.json(result)
+
+    // Tier 1: Gnani AI (hackathon partner — primary Indian voice engine)
+    if (isGnaniEnabled()) {
+      try {
+        const result = await gnaniSTT(req.file.buffer, { languageCode, mimeType: req.file.mimetype })
+        return res.json(result)
+      } catch (err) {
+        console.warn('[Voice] Gnani STT failed, trying Sarvam:', err.message)
+      }
+    }
+
+    // Tier 2: Sarvam (fallback)
+    if (isSarvamEnabled()) {
+      try {
+        const result = await sarvamSTT(req.file.buffer, { languageCode })
+        return res.json(result)
+      } catch (err) {
+        console.warn('[Voice] Sarvam STT failed, falling back to webspeech:', err.message)
+      }
+    }
+
+    return res.json({ fallback: 'webspeech' })
   } catch (err) {
     return handleSarvamError(err, res)
   }
@@ -112,7 +143,7 @@ router.get('/status', (req, res) => {
   // so the client can send a concrete speaker and match the Web Speech fallback
   // gender. This removes the "shubh vs anushka" mismatch between the two engines.
   const defaultSpeaker = (process.env.SARVAM_TTS_SPEAKER || 'anushka').toLowerCase()
-  res.json({ sarvamEnabled: isSarvamEnabled(), defaultSpeaker })
+  res.json({ sarvamEnabled: isSarvamEnabled(), gnaniEnabled: isGnaniEnabled(), defaultSpeaker })
 })
 
 module.exports = router

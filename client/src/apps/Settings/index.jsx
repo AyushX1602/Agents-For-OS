@@ -546,8 +546,8 @@ export default function Settings() {
                           <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-[18px] text-os-accent">record_voice_over</span>
                             <div>
-                              <p className="text-[13px] font-medium text-fg">Prefer Indian voice (Sarvam)</p>
-                              <p className="text-[11px] text-fg-mut">Uses Sarvam Bulbul v2 when available</p>
+                              <p className="text-[13px] font-medium text-fg">Prefer Indian voice (Gnani AI)</p>
+                              <p className="text-[11px] text-fg-mut">Uses Gnani AI voice when available; falls back to Sarvam/browser speech</p>
                             </div>
                           </div>
                           <Switch

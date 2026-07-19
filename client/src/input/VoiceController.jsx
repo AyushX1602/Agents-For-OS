@@ -218,6 +218,7 @@ function useVoice(active = true) {
   const lastExecutedAtRef = useRef(0)
   const isCleanupRef = useRef(false) // Track if we're cleaning up
   const isProcessingRef = useRef(false)
+  const micStreamRef = useRef(null) // Holds mic stream so permission stays granted
 
   const { voiceEnabled, voiceLocale = 'en-US', addNotification } = useOsStore()
 
@@ -921,16 +922,34 @@ function useVoice(active = true) {
       if (e.error === 'no-speech' || e.error === 'aborted') return
     }
 
-    // Store and start directly (webkitSpeechRecognition manages mic access natively)
     recognitionRef.current = recognition
 
-    if (!isCleanupRef.current) {
-      try {
-        recognition.start()
-      } catch (err) {
-        console.error('[VoiceHook] recognition.start() threw:', err)
-      }
-    }
+    // CRITICAL: request mic permission via getUserMedia BEFORE recognition.start().
+    // Calling recognition.start() outside a user gesture without a prior explicit
+    // permission grant makes Chrome fire 'not-allowed' (especially on HTTPS
+    // deployments), which sets retryCount to 99 and voice never starts.
+    // This is the behavior from the known-working build — do not remove.
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        micStreamRef.current = stream
+        if (isCleanupRef.current) {
+          stream.getTracks().forEach((t) => t.stop())
+          micStreamRef.current = null
+          return
+        }
+        try {
+          recognition.start()
+        } catch (err) {
+          console.error('[VoiceHook] recognition.start() threw:', err)
+        }
+      })
+      .catch((err) => {
+        console.error('[VoiceHook] getUserMedia failed:', err)
+        if (!isCleanupRef.current) {
+          addNotification('🎤 Microphone access denied — please allow microphone in browser settings', 'error')
+          retryCount.current = 99
+        }
+      })
 
     // Cleanup
     return () => {
@@ -938,6 +957,10 @@ function useVoice(active = true) {
       if (restartTimer.current) clearTimeout(restartTimer.current)
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       try { recognition.stop() } catch {}
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop())
+        micStreamRef.current = null
+      }
       setIsListening(false)
       setTranscript('')
     }
