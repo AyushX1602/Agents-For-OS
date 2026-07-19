@@ -568,8 +568,17 @@ export default function Settings() {
                               onChange={(e) => osStore.setSarvamSpeaker(e.target.value)}
                               className="bg-os-bg-primary text-fg border border-bd rounded-lg px-3 py-2 text-sm outline-none focus:border-os-accent"
                             >
-                              <option value="">Default (priya)</option>
-                              <optgroup label="Female voices (bulbul:v3)">
+                              <option value="">Default (Auto)</option>
+                              <optgroup label="Gnani AI Voices (vachana-voice-v3)">
+                                <option value="Pranav">Pranav (Male)</option>
+                                <option value="Karan">Karan (Male)</option>
+                                <option value="Viraj">Viraj (Male)</option>
+                                <option value="Raju">Raju (Male)</option>
+                                <option value="Riya">Riya (Female)</option>
+                                <option value="Simran">Simran (Female)</option>
+                                <option value="Nara">Nara (Female)</option>
+                              </optgroup>
+                              <optgroup label="Sarvam Female Voices (bulbul:v3)">
                                 <option value="priya">Priya</option>
                                 <option value="ritu">Ritu</option>
                                 <option value="neha">Neha</option>
@@ -582,8 +591,8 @@ export default function Settings() {
                                 <option value="shruti">Shruti</option>
                                 <option value="suhani">Suhani</option>
                               </optgroup>
-                              <optgroup label="Male voices (bulbul:v3)">
-                                <option value="shubh">Shubh (default)</option>
+                              <optgroup label="Sarvam Male Voices (bulbul:v3)">
+                                <option value="shubh">Shubh</option>
                                 <option value="aditya">Aditya</option>
                                 <option value="rahul">Rahul</option>
                                 <option value="rohan">Rohan</option>
@@ -594,7 +603,7 @@ export default function Settings() {
                                 <option value="mohit">Mohit</option>
                               </optgroup>
                             </select>
-                            <p className="text-[10px] text-fg-mut">All voices are bulbul:v3. Speaker names are case-sensitive (lowercase).</p>
+                            <p className="text-[10px] text-fg-mut">Select any voice persona for Gnani AI or Sarvam engines.</p>
                           </div>
                         )}
                       </div>

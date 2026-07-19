@@ -111,9 +111,10 @@ async function gnaniTTS(text, { voice } = {}) {
   if (!text || !text.trim()) throw new GnaniError('TTS text is empty', 400)
 
   const envVoice = process.env.GNANI_TTS_VOICE
-  const chosenVoice = (voice && voice.trim()) ? voice.trim()
+  const requested = (voice && voice.trim()) ? voice.trim()
     : (envVoice && envVoice.trim()) ? envVoice.trim()
     : 'Pranav'
+  const chosenVoice = Array.from(TTS_VOICES).find(v => v.toLowerCase() === requested.toLowerCase()) || requested
 
   const res = await fetch(`${baseUrl()}/api/v1/tts/inference`, {
     method: 'POST',

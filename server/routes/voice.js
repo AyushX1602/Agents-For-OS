@@ -50,7 +50,7 @@ router.post('/tts', async (req, res) => {
     // Tier 1: Gnani AI (hackathon partner — primary Indian voice engine)
     if (isGnaniEnabled()) {
       try {
-        const result = await gnaniTTS(text, { voice: req.body?.gnaniVoice })
+        const result = await gnaniTTS(text, { voice: req.body?.gnaniVoice || speaker, languageCode })
         return res.json(result)
       } catch (err) {
         console.warn('[Voice] Gnani TTS failed, trying Sarvam:', err.message)
@@ -139,11 +139,17 @@ router.post('/translate', async (req, res) => {
 
 // ── GET /api/voice/status ────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
-  // Expose the speaker the server will actually use (client speaker > env > anushka)
-  // so the client can send a concrete speaker and match the Web Speech fallback
-  // gender. This removes the "shubh vs anushka" mismatch between the two engines.
-  const defaultSpeaker = (process.env.SARVAM_TTS_SPEAKER || 'anushka').toLowerCase()
-  res.json({ sarvamEnabled: isSarvamEnabled(), gnaniEnabled: isGnaniEnabled(), defaultSpeaker })
+  // Expose the speaker the server will actually use (client speaker > env > anushka/Riya)
+  // so the client can send a concrete speaker and match the Web Speech fallback gender.
+  const defaultSpeaker = isGnaniEnabled()
+    ? (process.env.GNANI_TTS_VOICE || 'Riya')
+    : (process.env.SARVAM_TTS_SPEAKER || 'anushka').toLowerCase()
+  res.json({
+    sarvamEnabled: isSarvamEnabled(),
+    gnaniEnabled: isGnaniEnabled(),
+    gnaniVoice: process.env.GNANI_TTS_VOICE || 'Riya',
+    defaultSpeaker
+  })
 })
 
 module.exports = router

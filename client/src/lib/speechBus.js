@@ -83,11 +83,13 @@ export function effectiveSpeaker() {
 
 const FEMALE_SPEAKERS = new Set([
   'priya', 'ritu', 'neha', 'pooja', 'simran', 'kavya', 'ishita', 'shreya',
-  'tanya', 'shruti', 'suhani', 'anushka', 'manisha', 'vidya', 'arya'
+  'tanya', 'shruti', 'suhani', 'anushka', 'manisha', 'vidya', 'arya',
+  'riya', 'nara'
 ])
 const MALE_SPEAKERS = new Set([
   'shubh', 'aditya', 'rahul', 'rohan', 'amit', 'dev', 'kabir', 'mani', 'mohit',
-  'abhilash', 'karun', 'hitesh'
+  'abhilash', 'karun', 'hitesh',
+  'pranav', 'karan', 'viraj', 'raju'
 ])
 
 /** Gender of the voice that will actually play (used for the fallback). */
