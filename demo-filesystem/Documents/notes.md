@@ -1,10 +1,10 @@
 # My Notes
 
 ## Getting Started
-SavitaOS is a web-based operating system.
+SpiritOS is a web-based operating system.
 
 - Use gesture controls with your camera
-- Try voice commands by saying 'Savita'
+- Try voice commands by saying 'Spirit'
 - Open apps from the taskbar
 
 ## Ideas
