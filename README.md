@@ -305,4 +305,4 @@ Browser (React Desktop)
 
 ## 📜 License
 
-MIT-style license — see [LICENSE](LICENSE).
+Apache-2.0 license.
